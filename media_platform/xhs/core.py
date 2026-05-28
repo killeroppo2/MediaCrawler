@@ -71,7 +71,14 @@ class XiaoHongShuCrawler(AbstractCrawler):
 
         async with async_playwright() as playwright:
             # Choose launch mode based on configuration
-            if config.ENABLE_CDP_MODE:
+            if config.ENABLE_STEALTH_BROWSER:
+                utils.logger.info("[XiaoHongShuCrawler] Launching browser using stealth mode (CloakBrowser)")
+                self.browser_context = await self.launch_browser_stealth(
+                    playwright_proxy_format,
+                    self.user_agent,
+                    headless=config.HEADLESS,
+                )
+            elif config.ENABLE_CDP_MODE:
                 utils.logger.info("[XiaoHongShuCrawler] Launching browser using CDP mode")
                 self.browser_context = await self.launch_browser_with_cdp(
                     playwright,

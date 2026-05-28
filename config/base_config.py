@@ -82,6 +82,18 @@ CDP_CONNECT_EXISTING = True
 # 设置为 False 可以保持浏览器运行，方便调试
 AUTO_CLOSE_BROWSER = True
 
+# ==================== Stealth Browser (CloakBrowser) 配置 ====================
+# 是否启用隐身浏览器模式 - 使用 CloakBrowser 隐身 Chromium 浏览器
+# 开启后将使用经过反检测处理的 Chromium 浏览器，大幅降低被平台识别为爬虫的风险
+# 优先级：ENABLE_STEALTH_BROWSER > ENABLE_CDP_MODE > 标准模式
+ENABLE_STEALTH_BROWSER = False
+
+# 是否启用人类行为模拟（鼠标移动、键盘输入等更接近真人的操作方式）
+STEALTH_HUMANIZE = True
+
+# 人类行为模拟预设 - 'default' 普通模式, 'careful' 谨慎模式（更慢更像真人）
+STEALTH_HUMAN_PRESET = "default"
+
 # Data saving type option configuration, supports: csv, db, json, jsonl, sqlite, excel, postgres. It is best to save to DB, with deduplication function.
 SAVE_DATA_OPTION = "jsonl"  # csv or db or json or jsonl or sqlite or excel or postgres
 

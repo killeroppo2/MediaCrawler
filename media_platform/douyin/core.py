@@ -73,7 +73,14 @@ class DouYinCrawler(AbstractCrawler):
 
         async with async_playwright() as playwright:
             # Select startup mode based on configuration
-            if config.ENABLE_CDP_MODE:
+            if config.ENABLE_STEALTH_BROWSER:
+                utils.logger.info("[DouYinCrawler] Launching browser using stealth mode (CloakBrowser)")
+                self.browser_context = await self.launch_browser_stealth(
+                    playwright_proxy_format,
+                    None,
+                    headless=config.HEADLESS,
+                )
+            elif config.ENABLE_CDP_MODE:
                 utils.logger.info("[DouYinCrawler] 使用CDP模式启动浏览器")
                 self.browser_context = await self.launch_browser_with_cdp(
                     playwright,

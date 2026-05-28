@@ -75,7 +75,14 @@ class WeiboCrawler(AbstractCrawler):
 
         async with async_playwright() as playwright:
             # Select launch mode based on configuration
-            if config.ENABLE_CDP_MODE:
+            if config.ENABLE_STEALTH_BROWSER:
+                utils.logger.info("[WeiboCrawler] Launching browser using stealth mode (CloakBrowser)")
+                self.browser_context = await self.launch_browser_stealth(
+                    playwright_proxy_format,
+                    self.mobile_user_agent,
+                    headless=config.HEADLESS,
+                )
+            elif config.ENABLE_CDP_MODE:
                 utils.logger.info("[WeiboCrawler] Launching browser with CDP mode")
                 self.browser_context = await self.launch_browser_with_cdp(
                     playwright,

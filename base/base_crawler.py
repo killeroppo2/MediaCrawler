@@ -22,6 +22,11 @@ from typing import Dict, Optional
 
 from playwright.async_api import BrowserContext, BrowserType, Playwright
 
+import os
+
+import config
+from cloakbrowser import launch_async, launch_persistent_context_async
+
 
 class AbstractCrawler(ABC):
 
@@ -62,6 +67,39 @@ class AbstractCrawler(ABC):
         """
         # Default implementation: fallback to standard mode
         return await self.launch_browser(playwright.chromium, playwright_proxy, user_agent, headless)
+
+    async def launch_browser_stealth(self, playwright_proxy: Optional[Dict], user_agent: Optional[str], headless: bool = True) -> BrowserContext:
+        """
+        Launch browser using CloakBrowser stealth mode
+        :param playwright_proxy: playwright proxy configuration
+        :param user_agent: user agent
+        :param headless: headless mode
+        :return: browser context
+        """
+        if config.SAVE_LOGIN_STATE:
+            user_data_dir = os.path.join(os.getcwd(), "browser_data", config.USER_DATA_DIR % config.PLATFORM)
+            browser_context = await launch_persistent_context_async(
+                user_data_dir=user_data_dir,
+                headless=headless,
+                proxy=playwright_proxy,
+                user_agent=user_agent,
+                viewport={"width": 1920, "height": 1080},
+                humanize=config.STEALTH_HUMANIZE,
+                human_preset=config.STEALTH_HUMAN_PRESET,
+            )
+            return browser_context
+        else:
+            browser = await launch_async(
+                headless=headless,
+                proxy=playwright_proxy,
+                humanize=config.STEALTH_HUMANIZE,
+                human_preset=config.STEALTH_HUMAN_PRESET,
+            )
+            browser_context = await browser.new_context(
+                viewport={"width": 1920, "height": 1080},
+                user_agent=user_agent,
+            )
+            return browser_context
 
 
 class AbstractLogin(ABC):
