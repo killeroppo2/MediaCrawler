@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "feat",
   "description": "Write comprehensive unit tests for the CloakBrowser stealth browser integration covering config, base_crawler.launch_browser_stealth(), and platform core.py stealth branches",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Create tests/test_stealth_browser.py with the following test classes:",
     "",
@@ -51,5 +51,5 @@
     "Confirm coverage of launch_browser_stealth lines is >= 90%"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Patching cloakbrowser functions requires patching at 'cloakbrowser.launch_context_async' (not 'base.base_crawler.launch_context_async') because the import is local inside the function body. Platform stealth branch tests need StopAsyncIteration side_effect on browser_context.new_page() to prevent downstream code from running indefinitely. Pre-existing test_create_excel_store failure in test_store_factory.py is unrelated."
 }
