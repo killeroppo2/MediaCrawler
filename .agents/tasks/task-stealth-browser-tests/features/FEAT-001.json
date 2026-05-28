@@ -1,0 +1,20 @@
+{
+  "id": "FEAT-001",
+  "type": "chore",
+  "description": "Install test dependencies (pytest-cov) and verify baseline test infrastructure works",
+  "status": "completed",
+  "steps": [
+    "Run: pip install pytest-cov in the MediaCrawler directory",
+    "Verify existing tests pass: pytest tests/ -v --timeout=30",
+    "Verify config module imports properly: python -c 'import config'"
+  ],
+  "acceptance_criteria": [
+    "pytest-cov is installed and usable",
+    "Existing tests pass (or at least the test framework works)"
+  ],
+  "verification": [
+    "Run: pip install pytest-cov && pytest tests/test_store_factory.py -v"
+  ],
+  "blocked_reason": null,
+  "findings": "pytest-cov 7.1.0 installed. 8/9 existing tests pass. test_create_excel_store has a pre-existing failure (ExcelStoreBase vs XhsExcelStoreImplement type mismatch). Config module imports successfully with ENABLE_STEALTH_BROWSER and STEALTH_HUMANIZE attributes available. pytest-asyncio 1.4.0 already installed."
+}

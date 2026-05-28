@@ -73,66 +73,112 @@ class WeiboCrawler(AbstractCrawler):
             ip_proxy_info: IpInfoModel = await self.ip_proxy_pool.get_proxy()
             playwright_proxy_format, httpx_proxy_format = utils.format_proxy_info(ip_proxy_info)
 
-        async with async_playwright() as playwright:
-            # Select launch mode based on configuration
-            if config.ENABLE_CDP_MODE:
-                utils.logger.info("[WeiboCrawler] Launching browser with CDP mode")
-                self.browser_context = await self.launch_browser_with_cdp(
-                    playwright,
-                    playwright_proxy_format,
-                    self.mobile_user_agent,
-                    headless=config.CDP_HEADLESS,
-                )
-            else:
-                utils.logger.info("[WeiboCrawler] Launching browser with standard mode")
-                # Launch a browser context.
-                chromium = playwright.chromium
-                self.browser_context = await self.launch_browser(chromium, None, self.mobile_user_agent, headless=config.HEADLESS)
+        if config.ENABLE_STEALTH_BROWSER:
+            utils.logger.info("[WeiboCrawler] Launching browser using stealth mode (CloakBrowser)")
+            self.browser_context = await self.launch_browser_stealth(
+                playwright_proxy_format,
+                self.mobile_user_agent,
+                headless=config.HEADLESS,
+            )
+        else:
+            async with async_playwright() as playwright:
+                if config.ENABLE_CDP_MODE:
+                    utils.logger.info("[WeiboCrawler] Launching browser with CDP mode")
+                    self.browser_context = await self.launch_browser_with_cdp(
+                        playwright,
+                        playwright_proxy_format,
+                        self.mobile_user_agent,
+                        headless=config.CDP_HEADLESS,
+                    )
+                else:
+                    utils.logger.info("[WeiboCrawler] Launching browser with standard mode")
+                    # Launch a browser context.
+                    chromium = playwright.chromium
+                    self.browser_context = await self.launch_browser(chromium, None, self.mobile_user_agent, headless=config.HEADLESS)
 
-                # stealth.min.js is a js script to prevent the website from detecting the crawler.
-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
+                    # stealth.min.js is a js script to prevent the website from detecting the crawler.
+                    await self.browser_context.add_init_script(path="libs/stealth.min.js")
 
+                self.context_page = await self.browser_context.new_page()
+                await self.context_page.goto(self.index_url)
+                await asyncio.sleep(2)
 
-            self.context_page = await self.browser_context.new_page()
-            await self.context_page.goto(self.index_url)
-            await asyncio.sleep(2)
+                # Create a client to interact with the xiaohongshu website.
+                self.wb_client = await self.create_weibo_client(httpx_proxy_format)
+                if not await self.wb_client.pong():
+                    login_obj = WeiboLogin(
+                        login_type=config.LOGIN_TYPE,
+                        login_phone="",  # your phone number
+                        browser_context=self.browser_context,
+                        context_page=self.context_page,
+                        cookie_str=config.COOKIES,
+                    )
+                    await login_obj.begin()
 
+                    # After successful login, redirect to mobile website and update mobile cookies
+                    utils.logger.info("[WeiboCrawler.start] redirect weibo mobile homepage and update cookies on mobile platform")
+                    await self.context_page.goto(self.mobile_index_url)
+                    await asyncio.sleep(3)
+                    # Only get mobile cookies to avoid confusion between PC and mobile cookies
+                    await self.wb_client.update_cookies(
+                        browser_context=self.browser_context,
+                        urls=self.cookie_urls,
+                    )
 
-            # Create a client to interact with the xiaohongshu website.
-            self.wb_client = await self.create_weibo_client(httpx_proxy_format)
-            if not await self.wb_client.pong():
-                login_obj = WeiboLogin(
-                    login_type=config.LOGIN_TYPE,
-                    login_phone="",  # your phone number
-                    browser_context=self.browser_context,
-                    context_page=self.context_page,
-                    cookie_str=config.COOKIES,
-                )
-                await login_obj.begin()
+                crawler_type_var.set(config.CRAWLER_TYPE)
+                if config.CRAWLER_TYPE == "search":
+                    # Search for video and retrieve their comment information.
+                    await self.search()
+                elif config.CRAWLER_TYPE == "detail":
+                    # Get the information and comments of the specified post
+                    await self.get_specified_notes()
+                elif config.CRAWLER_TYPE == "creator":
+                    # Get creator's information and their notes and comments
+                    await self.get_creators_and_notes()
+                else:
+                    pass
+                utils.logger.info("[WeiboCrawler.start] Weibo Crawler finished ...")
+                return
 
-                # After successful login, redirect to mobile website and update mobile cookies
-                utils.logger.info("[WeiboCrawler.start] redirect weibo mobile homepage and update cookies on mobile platform")
-                await self.context_page.goto(self.mobile_index_url)
-                await asyncio.sleep(3)
-                # Only get mobile cookies to avoid confusion between PC and mobile cookies
-                await self.wb_client.update_cookies(
-                    browser_context=self.browser_context,
-                    urls=self.cookie_urls,
-                )
+        self.context_page = await self.browser_context.new_page()
+        await self.context_page.goto(self.index_url)
+        await asyncio.sleep(2)
 
-            crawler_type_var.set(config.CRAWLER_TYPE)
-            if config.CRAWLER_TYPE == "search":
-                # Search for video and retrieve their comment information.
-                await self.search()
-            elif config.CRAWLER_TYPE == "detail":
-                # Get the information and comments of the specified post
-                await self.get_specified_notes()
-            elif config.CRAWLER_TYPE == "creator":
-                # Get creator's information and their notes and comments
-                await self.get_creators_and_notes()
-            else:
-                pass
-            utils.logger.info("[WeiboCrawler.start] Weibo Crawler finished ...")
+        # Create a client to interact with the xiaohongshu website.
+        self.wb_client = await self.create_weibo_client(httpx_proxy_format)
+        if not await self.wb_client.pong():
+            login_obj = WeiboLogin(
+                login_type=config.LOGIN_TYPE,
+                login_phone="",  # your phone number
+                browser_context=self.browser_context,
+                context_page=self.context_page,
+                cookie_str=config.COOKIES,
+            )
+            await login_obj.begin()
+
+            # After successful login, redirect to mobile website and update mobile cookies
+            utils.logger.info("[WeiboCrawler.start] redirect weibo mobile homepage and update cookies on mobile platform")
+            await self.context_page.goto(self.mobile_index_url)
+            await asyncio.sleep(3)
+            # Only get mobile cookies to avoid confusion between PC and mobile cookies
+            await self.wb_client.update_cookies(
+                browser_context=self.browser_context,
+                urls=self.cookie_urls,
+            )
+
+        crawler_type_var.set(config.CRAWLER_TYPE)
+        if config.CRAWLER_TYPE == "search":
+            # Search for video and retrieve their comment information.
+            await self.search()
+        elif config.CRAWLER_TYPE == "detail":
+            # Get the information and comments of the specified post
+            await self.get_specified_notes()
+        elif config.CRAWLER_TYPE == "creator":
+            # Get creator's information and their notes and comments
+            await self.get_creators_and_notes()
+        else:
+            pass
+        utils.logger.info("[WeiboCrawler.start] Weibo Crawler finished ...")
 
     async def search(self):
         """
