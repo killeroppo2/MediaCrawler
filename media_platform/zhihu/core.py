@@ -80,79 +80,127 @@ class ZhihuCrawler(AbstractCrawler):
                 ip_proxy_info
             )
 
-        async with async_playwright() as playwright:
-            # Choose launch mode based on configuration
-            if config.ENABLE_STEALTH_BROWSER:
-                utils.logger.info("[ZhihuCrawler] Launching browser using stealth mode (CloakBrowser)")
-                self.browser_context = await self.launch_browser_stealth(
-                    playwright_proxy_format,
-                    self.user_agent,
-                    headless=config.HEADLESS,
-                )
-            elif config.ENABLE_CDP_MODE:
-                utils.logger.info("[ZhihuCrawler] Launching browser in CDP mode")
-                self.browser_context = await self.launch_browser_with_cdp(
-                    playwright,
-                    playwright_proxy_format,
-                    self.user_agent,
-                    headless=config.CDP_HEADLESS,
-                )
-            else:
-                utils.logger.info("[ZhihuCrawler] Launching browser in standard mode")
-                # Launch a browser context.
-                chromium = playwright.chromium
-                self.browser_context = await self.launch_browser(
-                    chromium, None, self.user_agent, headless=config.HEADLESS
-                )
-                # stealth.min.js is a js script to prevent the website from detecting the crawler.
-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
+        if config.ENABLE_STEALTH_BROWSER:
+            utils.logger.info("[ZhihuCrawler] Launching browser using stealth mode (CloakBrowser)")
+            self.browser_context = await self.launch_browser_stealth(
+                playwright_proxy_format,
+                self.user_agent,
+                headless=config.HEADLESS,
+            )
+        else:
+            async with async_playwright() as playwright:
+                if config.ENABLE_CDP_MODE:
+                    utils.logger.info("[ZhihuCrawler] Launching browser in CDP mode")
+                    self.browser_context = await self.launch_browser_with_cdp(
+                        playwright,
+                        playwright_proxy_format,
+                        self.user_agent,
+                        headless=config.CDP_HEADLESS,
+                    )
+                else:
+                    utils.logger.info("[ZhihuCrawler] Launching browser in standard mode")
+                    # Launch a browser context.
+                    chromium = playwright.chromium
+                    self.browser_context = await self.launch_browser(
+                        chromium, None, self.user_agent, headless=config.HEADLESS
+                    )
+                    # stealth.min.js is a js script to prevent the website from detecting the crawler.
+                    await self.browser_context.add_init_script(path="libs/stealth.min.js")
 
-            self.context_page = await self.browser_context.new_page()
-            await self.context_page.goto(self.index_url, wait_until="domcontentloaded")
+                self.context_page = await self.browser_context.new_page()
+                await self.context_page.goto(self.index_url, wait_until="domcontentloaded")
 
-            # Create a client to interact with the zhihu website.
-            self.zhihu_client = await self.create_zhihu_client(httpx_proxy_format)
-            if not await self.zhihu_client.pong():
-                login_obj = ZhiHuLogin(
-                    login_type=config.LOGIN_TYPE,
-                    login_phone="",  # input your phone number
-                    browser_context=self.browser_context,
-                    context_page=self.context_page,
-                    cookie_str=config.COOKIES,
+                # Create a client to interact with the zhihu website.
+                self.zhihu_client = await self.create_zhihu_client(httpx_proxy_format)
+                if not await self.zhihu_client.pong():
+                    login_obj = ZhiHuLogin(
+                        login_type=config.LOGIN_TYPE,
+                        login_phone="",  # input your phone number
+                        browser_context=self.browser_context,
+                        context_page=self.context_page,
+                        cookie_str=config.COOKIES,
+                    )
+                    await login_obj.begin()
+                    await self.zhihu_client.update_cookies(
+                        browser_context=self.browser_context,
+                        urls=self.cookie_urls,
+                    )
+
+                # Zhihu's search API requires opening the search page first to access cookies, homepage alone won't work
+                utils.logger.info(
+                    "[ZhihuCrawler.start] Zhihu navigating to search page to get search page cookies, this process takes about 5 seconds"
                 )
-                await login_obj.begin()
+                await self.context_page.goto(
+                    f"{self.index_url}/search?q=python&search_source=Guess&utm_content=search_hot&type=content"
+                )
+                await asyncio.sleep(5)
                 await self.zhihu_client.update_cookies(
                     browser_context=self.browser_context,
                     urls=self.cookie_urls,
                 )
 
-            # Zhihu's search API requires opening the search page first to access cookies, homepage alone won't work
-            utils.logger.info(
-                "[ZhihuCrawler.start] Zhihu navigating to search page to get search page cookies, this process takes about 5 seconds"
+                crawler_type_var.set(config.CRAWLER_TYPE)
+                if config.CRAWLER_TYPE == "search":
+                    # Search for notes and retrieve their comment information.
+                    await self.search()
+                elif config.CRAWLER_TYPE == "detail":
+                    # Get the information and comments of the specified post
+                    await self.get_specified_notes()
+                elif config.CRAWLER_TYPE == "creator":
+                    # Get creator's information and their notes and comments
+                    await self.get_creators_and_notes()
+                else:
+                    pass
+
+                utils.logger.info("[ZhihuCrawler.start] Zhihu Crawler finished ...")
+                return
+
+        self.context_page = await self.browser_context.new_page()
+        await self.context_page.goto(self.index_url, wait_until="domcontentloaded")
+
+        # Create a client to interact with the zhihu website.
+        self.zhihu_client = await self.create_zhihu_client(httpx_proxy_format)
+        if not await self.zhihu_client.pong():
+            login_obj = ZhiHuLogin(
+                login_type=config.LOGIN_TYPE,
+                login_phone="",  # input your phone number
+                browser_context=self.browser_context,
+                context_page=self.context_page,
+                cookie_str=config.COOKIES,
             )
-            await self.context_page.goto(
-                f"{self.index_url}/search?q=python&search_source=Guess&utm_content=search_hot&type=content"
-            )
-            await asyncio.sleep(5)
+            await login_obj.begin()
             await self.zhihu_client.update_cookies(
                 browser_context=self.browser_context,
                 urls=self.cookie_urls,
             )
 
-            crawler_type_var.set(config.CRAWLER_TYPE)
-            if config.CRAWLER_TYPE == "search":
-                # Search for notes and retrieve their comment information.
-                await self.search()
-            elif config.CRAWLER_TYPE == "detail":
-                # Get the information and comments of the specified post
-                await self.get_specified_notes()
-            elif config.CRAWLER_TYPE == "creator":
-                # Get creator's information and their notes and comments
-                await self.get_creators_and_notes()
-            else:
-                pass
+        # Zhihu's search API requires opening the search page first to access cookies, homepage alone won't work
+        utils.logger.info(
+            "[ZhihuCrawler.start] Zhihu navigating to search page to get search page cookies, this process takes about 5 seconds"
+        )
+        await self.context_page.goto(
+            f"{self.index_url}/search?q=python&search_source=Guess&utm_content=search_hot&type=content"
+        )
+        await asyncio.sleep(5)
+        await self.zhihu_client.update_cookies(
+            browser_context=self.browser_context,
+            urls=self.cookie_urls,
+        )
 
-            utils.logger.info("[ZhihuCrawler.start] Zhihu Crawler finished ...")
+        crawler_type_var.set(config.CRAWLER_TYPE)
+        if config.CRAWLER_TYPE == "search":
+            # Search for notes and retrieve their comment information.
+            await self.search()
+        elif config.CRAWLER_TYPE == "detail":
+            # Get the information and comments of the specified post
+            await self.get_specified_notes()
+        elif config.CRAWLER_TYPE == "creator":
+            # Get creator's information and their notes and comments
+            await self.get_creators_and_notes()
+        else:
+            pass
+
+        utils.logger.info("[ZhihuCrawler.start] Zhihu Crawler finished ...")
 
     async def search(self) -> None:
         """Search for notes and retrieve their comment information."""

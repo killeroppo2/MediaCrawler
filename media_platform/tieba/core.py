@@ -79,78 +79,124 @@ class TieBaCrawler(AbstractCrawler):
                 f"[BaiduTieBaCrawler.start] Init default ip proxy, value: {httpx_proxy_format}"
             )
 
-        async with async_playwright() as playwright:
-            # Choose startup mode based on configuration
-            if config.ENABLE_STEALTH_BROWSER:
-                utils.logger.info("[BaiduTieBaCrawler] Launching browser using stealth mode (CloakBrowser)")
-                self.browser_context = await self.launch_browser_stealth(
-                    playwright_proxy_format,
-                    self.user_agent,
-                    headless=config.HEADLESS,
+        if config.ENABLE_STEALTH_BROWSER:
+            utils.logger.info("[BaiduTieBaCrawler] Launching browser using stealth mode (CloakBrowser)")
+            self.browser_context = await self.launch_browser_stealth(
+                playwright_proxy_format,
+                self.user_agent,
+                headless=config.HEADLESS,
+            )
+        else:
+            async with async_playwright() as playwright:
+                if config.ENABLE_CDP_MODE:
+                    utils.logger.info("[BaiduTieBaCrawler] Launching browser in CDP mode")
+                    self.browser_context = await self.launch_browser_with_cdp(
+                        playwright,
+                        playwright_proxy_format,
+                        self.user_agent,
+                        headless=config.CDP_HEADLESS,
+                    )
+                else:
+                    utils.logger.info("[BaiduTieBaCrawler] Launching browser in standard mode")
+                    # Launch a browser context.
+                    chromium = playwright.chromium
+                    self.browser_context = await self.launch_browser(
+                        chromium,
+                        playwright_proxy_format,
+                        self.user_agent,
+                        headless=config.HEADLESS,
+                    )
+
+                # Inject anti-detection scripts - for Baidu's special detection
+                await self._inject_anti_detection_scripts()
+
+                self.context_page = await self.browser_context.new_page()
+
+                # First visit Baidu homepage, then click Tieba link to avoid triggering security verification
+                await self._navigate_to_tieba_via_baidu()
+
+                # Create a client to interact with the baidutieba website.
+                self.tieba_client = await self.create_tieba_client(
+                    httpx_proxy_format,
+                    ip_proxy_pool if config.ENABLE_IP_PROXY else None
                 )
-            elif config.ENABLE_CDP_MODE:
-                utils.logger.info("[BaiduTieBaCrawler] Launching browser in CDP mode")
-                self.browser_context = await self.launch_browser_with_cdp(
-                    playwright,
-                    playwright_proxy_format,
-                    self.user_agent,
-                    headless=config.CDP_HEADLESS,
-                )
-            else:
-                utils.logger.info("[BaiduTieBaCrawler] Launching browser in standard mode")
-                # Launch a browser context.
-                chromium = playwright.chromium
-                self.browser_context = await self.launch_browser(
-                    chromium,
-                    playwright_proxy_format,
-                    self.user_agent,
-                    headless=config.HEADLESS,
-                )
 
-            # Inject anti-detection scripts - for Baidu's special detection
-            await self._inject_anti_detection_scripts()
+                # Check login status and perform login if necessary
+                if not await self.tieba_client.pong(browser_context=self.browser_context):
+                    login_obj = BaiduTieBaLogin(
+                        login_type=config.LOGIN_TYPE,
+                        login_phone="",  # your phone number
+                        browser_context=self.browser_context,
+                        context_page=self.context_page,
+                        cookie_str=config.COOKIES,
+                    )
+                    await login_obj.begin()
+                    await self.tieba_client.update_cookies(
+                        browser_context=self.browser_context,
+                        urls=self.cookie_urls,
+                    )
 
-            self.context_page = await self.browser_context.new_page()
+                crawler_type_var.set(config.CRAWLER_TYPE)
+                if config.CRAWLER_TYPE == "search":
+                    # Search for notes and retrieve their comment information.
+                    await self.search()
+                    await self.get_specified_tieba_notes()
+                elif config.CRAWLER_TYPE == "detail":
+                    # Get the information and comments of the specified post
+                    await self.get_specified_notes()
+                elif config.CRAWLER_TYPE == "creator":
+                    # Get creator's information and their notes and comments
+                    await self.get_creators_and_notes()
+                else:
+                    pass
 
-            # First visit Baidu homepage, then click Tieba link to avoid triggering security verification
-            await self._navigate_to_tieba_via_baidu()
+                utils.logger.info("[BaiduTieBaCrawler.start] Tieba Crawler finished ...")
+                return
 
-            # Create a client to interact with the baidutieba website.
-            self.tieba_client = await self.create_tieba_client(
-                httpx_proxy_format,
-                ip_proxy_pool if config.ENABLE_IP_PROXY else None
+        # Inject anti-detection scripts - for Baidu's special detection
+        await self._inject_anti_detection_scripts()
+
+        self.context_page = await self.browser_context.new_page()
+
+        # First visit Baidu homepage, then click Tieba link to avoid triggering security verification
+        await self._navigate_to_tieba_via_baidu()
+
+        # Create a client to interact with the baidutieba website.
+        self.tieba_client = await self.create_tieba_client(
+            httpx_proxy_format,
+            ip_proxy_pool if config.ENABLE_IP_PROXY else None
+        )
+
+        # Check login status and perform login if necessary
+        if not await self.tieba_client.pong(browser_context=self.browser_context):
+            login_obj = BaiduTieBaLogin(
+                login_type=config.LOGIN_TYPE,
+                login_phone="",  # your phone number
+                browser_context=self.browser_context,
+                context_page=self.context_page,
+                cookie_str=config.COOKIES,
+            )
+            await login_obj.begin()
+            await self.tieba_client.update_cookies(
+                browser_context=self.browser_context,
+                urls=self.cookie_urls,
             )
 
-            # Check login status and perform login if necessary
-            if not await self.tieba_client.pong(browser_context=self.browser_context):
-                login_obj = BaiduTieBaLogin(
-                    login_type=config.LOGIN_TYPE,
-                    login_phone="",  # your phone number
-                    browser_context=self.browser_context,
-                    context_page=self.context_page,
-                    cookie_str=config.COOKIES,
-                )
-                await login_obj.begin()
-                await self.tieba_client.update_cookies(
-                    browser_context=self.browser_context,
-                    urls=self.cookie_urls,
-                )
+        crawler_type_var.set(config.CRAWLER_TYPE)
+        if config.CRAWLER_TYPE == "search":
+            # Search for notes and retrieve their comment information.
+            await self.search()
+            await self.get_specified_tieba_notes()
+        elif config.CRAWLER_TYPE == "detail":
+            # Get the information and comments of the specified post
+            await self.get_specified_notes()
+        elif config.CRAWLER_TYPE == "creator":
+            # Get creator's information and their notes and comments
+            await self.get_creators_and_notes()
+        else:
+            pass
 
-            crawler_type_var.set(config.CRAWLER_TYPE)
-            if config.CRAWLER_TYPE == "search":
-                # Search for notes and retrieve their comment information.
-                await self.search()
-                await self.get_specified_tieba_notes()
-            elif config.CRAWLER_TYPE == "detail":
-                # Get the information and comments of the specified post
-                await self.get_specified_notes()
-            elif config.CRAWLER_TYPE == "creator":
-                # Get creator's information and their notes and comments
-                await self.get_creators_and_notes()
-            else:
-                pass
-
-            utils.logger.info("[BaiduTieBaCrawler.start] Tieba Crawler finished ...")
+        utils.logger.info("[BaiduTieBaCrawler.start] Tieba Crawler finished ...")
 
     async def search(self) -> None:
         """

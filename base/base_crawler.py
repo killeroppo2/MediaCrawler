@@ -25,7 +25,6 @@ from playwright.async_api import BrowserContext, BrowserType, Playwright
 import os
 
 import config
-from cloakbrowser import launch_async, launch_persistent_context_async
 
 
 class AbstractCrawler(ABC):
@@ -76,6 +75,8 @@ class AbstractCrawler(ABC):
         :param headless: headless mode
         :return: browser context
         """
+        from cloakbrowser import launch_context_async, launch_persistent_context_async
+
         if config.SAVE_LOGIN_STATE:
             user_data_dir = os.path.join(os.getcwd(), "browser_data", config.USER_DATA_DIR % config.PLATFORM)
             browser_context = await launch_persistent_context_async(
@@ -89,15 +90,13 @@ class AbstractCrawler(ABC):
             )
             return browser_context
         else:
-            browser = await launch_async(
+            browser_context = await launch_context_async(
                 headless=headless,
                 proxy=playwright_proxy,
+                user_agent=user_agent,
+                viewport={"width": 1920, "height": 1080},
                 humanize=config.STEALTH_HUMANIZE,
                 human_preset=config.STEALTH_HUMAN_PRESET,
-            )
-            browser_context = await browser.new_context(
-                viewport={"width": 1920, "height": 1080},
-                user_agent=user_agent,
             )
             return browser_context
 

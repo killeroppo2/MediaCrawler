@@ -69,69 +69,104 @@ class XiaoHongShuCrawler(AbstractCrawler):
             ip_proxy_info: IpInfoModel = await self.ip_proxy_pool.get_proxy()
             playwright_proxy_format, httpx_proxy_format = utils.format_proxy_info(ip_proxy_info)
 
-        async with async_playwright() as playwright:
-            # Choose launch mode based on configuration
-            if config.ENABLE_STEALTH_BROWSER:
-                utils.logger.info("[XiaoHongShuCrawler] Launching browser using stealth mode (CloakBrowser)")
-                self.browser_context = await self.launch_browser_stealth(
-                    playwright_proxy_format,
-                    self.user_agent,
-                    headless=config.HEADLESS,
-                )
-            elif config.ENABLE_CDP_MODE:
-                utils.logger.info("[XiaoHongShuCrawler] Launching browser using CDP mode")
-                self.browser_context = await self.launch_browser_with_cdp(
-                    playwright,
-                    playwright_proxy_format,
-                    self.user_agent,
-                    headless=config.CDP_HEADLESS,
-                )
-            else:
-                utils.logger.info("[XiaoHongShuCrawler] Launching browser using standard mode")
-                # Launch a browser context.
-                chromium = playwright.chromium
-                self.browser_context = await self.launch_browser(
-                    chromium,
-                    playwright_proxy_format,
-                    self.user_agent,
-                    headless=config.HEADLESS,
-                )
-                # stealth.min.js is a js script to prevent the website from detecting the crawler.
-                await self.browser_context.add_init_script(path="libs/stealth.min.js")
+        if config.ENABLE_STEALTH_BROWSER:
+            utils.logger.info("[XiaoHongShuCrawler] Launching browser using stealth mode (CloakBrowser)")
+            self.browser_context = await self.launch_browser_stealth(
+                playwright_proxy_format,
+                self.user_agent,
+                headless=config.HEADLESS,
+            )
+        else:
+            async with async_playwright() as playwright:
+                if config.ENABLE_CDP_MODE:
+                    utils.logger.info("[XiaoHongShuCrawler] Launching browser using CDP mode")
+                    self.browser_context = await self.launch_browser_with_cdp(
+                        playwright,
+                        playwright_proxy_format,
+                        self.user_agent,
+                        headless=config.CDP_HEADLESS,
+                    )
+                else:
+                    utils.logger.info("[XiaoHongShuCrawler] Launching browser using standard mode")
+                    # Launch a browser context.
+                    chromium = playwright.chromium
+                    self.browser_context = await self.launch_browser(
+                        chromium,
+                        playwright_proxy_format,
+                        self.user_agent,
+                        headless=config.HEADLESS,
+                    )
+                    # stealth.min.js is a js script to prevent the website from detecting the crawler.
+                    await self.browser_context.add_init_script(path="libs/stealth.min.js")
 
-            self.context_page = await self.browser_context.new_page()
-            await self.context_page.goto(self.index_url)
+                self.context_page = await self.browser_context.new_page()
+                await self.context_page.goto(self.index_url)
 
-            # Create a client to interact with the Xiaohongshu website.
-            self.xhs_client = await self.create_xhs_client(httpx_proxy_format)
-            if not await self.xhs_client.pong():
-                login_obj = XiaoHongShuLogin(
-                    login_type=config.LOGIN_TYPE,
-                    login_phone="",  # input your phone number
-                    browser_context=self.browser_context,
-                    context_page=self.context_page,
-                    cookie_str=config.COOKIES,
-                )
-                await login_obj.begin()
-                await self.xhs_client.update_cookies(
-                    browser_context=self.browser_context,
-                    urls=self.cookie_urls,
-                )
+                # Create a client to interact with the Xiaohongshu website.
+                self.xhs_client = await self.create_xhs_client(httpx_proxy_format)
+                if not await self.xhs_client.pong():
+                    login_obj = XiaoHongShuLogin(
+                        login_type=config.LOGIN_TYPE,
+                        login_phone="",  # input your phone number
+                        browser_context=self.browser_context,
+                        context_page=self.context_page,
+                        cookie_str=config.COOKIES,
+                    )
+                    await login_obj.begin()
+                    await self.xhs_client.update_cookies(
+                        browser_context=self.browser_context,
+                        urls=self.cookie_urls,
+                    )
 
-            crawler_type_var.set(config.CRAWLER_TYPE)
-            if config.CRAWLER_TYPE == "search":
-                # Search for notes and retrieve their comment information.
-                await self.search()
-            elif config.CRAWLER_TYPE == "detail":
-                # Get the information and comments of the specified post
-                await self.get_specified_notes()
-            elif config.CRAWLER_TYPE == "creator":
-                # Get creator's information and their notes and comments
-                await self.get_creators_and_notes()
-            else:
-                pass
+                crawler_type_var.set(config.CRAWLER_TYPE)
+                if config.CRAWLER_TYPE == "search":
+                    # Search for notes and retrieve their comment information.
+                    await self.search()
+                elif config.CRAWLER_TYPE == "detail":
+                    # Get the information and comments of the specified post
+                    await self.get_specified_notes()
+                elif config.CRAWLER_TYPE == "creator":
+                    # Get creator's information and their notes and comments
+                    await self.get_creators_and_notes()
+                else:
+                    pass
 
-            utils.logger.info("[XiaoHongShuCrawler.start] Xhs Crawler finished ...")
+                utils.logger.info("[XiaoHongShuCrawler.start] Xhs Crawler finished ...")
+                return
+
+        self.context_page = await self.browser_context.new_page()
+        await self.context_page.goto(self.index_url)
+
+        # Create a client to interact with the Xiaohongshu website.
+        self.xhs_client = await self.create_xhs_client(httpx_proxy_format)
+        if not await self.xhs_client.pong():
+            login_obj = XiaoHongShuLogin(
+                login_type=config.LOGIN_TYPE,
+                login_phone="",  # input your phone number
+                browser_context=self.browser_context,
+                context_page=self.context_page,
+                cookie_str=config.COOKIES,
+            )
+            await login_obj.begin()
+            await self.xhs_client.update_cookies(
+                browser_context=self.browser_context,
+                urls=self.cookie_urls,
+            )
+
+        crawler_type_var.set(config.CRAWLER_TYPE)
+        if config.CRAWLER_TYPE == "search":
+            # Search for notes and retrieve their comment information.
+            await self.search()
+        elif config.CRAWLER_TYPE == "detail":
+            # Get the information and comments of the specified post
+            await self.get_specified_notes()
+        elif config.CRAWLER_TYPE == "creator":
+            # Get creator's information and their notes and comments
+            await self.get_creators_and_notes()
+        else:
+            pass
+
+        utils.logger.info("[XiaoHongShuCrawler.start] Xhs Crawler finished ...")
 
     async def search(self) -> None:
         """Search for notes and retrieve their comment information."""
