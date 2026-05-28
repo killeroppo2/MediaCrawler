@@ -1,0 +1,24 @@
+{
+  "project_type": "Python async web crawler (MediaCrawler) with CloakBrowser stealth browser integration",
+  "language": "Python 3.11",
+  "build_system": "pip/uv with requirements.txt and pyproject.toml",
+  "test_framework": "pytest with pytest-asyncio, unittest.mock for mocking. Tests in tests/ directory with conftest.py fixtures.",
+  "build_command": "pip install -e . or pip install -r requirements.txt",
+  "test_command": "pytest tests/test_stealth_browser.py -v --cov=base.base_crawler --cov=config.base_config --cov-report=term-missing",
+  "verification_instructions": "Run pytest with coverage and confirm all tests pass with 90%+ coverage on stealth-related code",
+  "snapshot_or_generated_files": null,
+  "setup_instructions": "pip install pytest-cov pytest-asyncio; ensure cloakbrowser is importable",
+  "environment_constraints": "OPEN_INTERNET - can install any dependencies. No real browser launching needed - all CloakBrowser calls should be mocked.",
+  "contribution_requirements": "Tests must use pytest and pytest-asyncio. Mock external dependencies. Test file goes in tests/ directory.",
+  "key_patterns": "Existing tests use @patch decorator for config mocking, pytest fixtures in conftest.py, class-based test organization (TestXhsStoreFactory pattern). Async tests use pytest.mark.asyncio. The project uses 'import config' to access base_config values.",
+  "relevant_files": [
+    "config/base_config.py",
+    "base/base_crawler.py",
+    "media_platform/xhs/core.py",
+    "media_platform/douyin/core.py",
+    "media_platform/bilibili/core.py",
+    "tests/conftest.py",
+    "tests/test_store_factory.py"
+  ],
+  "directory_structure": "Root: config/ (configuration), base/ (abstract base classes), media_platform/{xhs,douyin,bilibili,kuaishou,weibo,tieba,zhihu}/ (platform crawlers with core.py), tests/ (unit tests), tools/ (utilities), store/ (data storage)"
+}

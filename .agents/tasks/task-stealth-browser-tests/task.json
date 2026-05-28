@@ -1,0 +1,7 @@
+{
+  "task_id": "task-stealth-browser-tests",
+  "task_description": "Write comprehensive unit tests for the CloakBrowser stealth browser integration in MediaCrawler, targeting 90% coverage on stealth-related code",
+  "status": "in_progress",
+  "feature_order": ["FEAT-001", "FEAT-002"],
+  "blocked_reason": null
+}
